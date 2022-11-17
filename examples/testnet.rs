@@ -30,8 +30,11 @@ fn main() {
                 "AF74387E276BE8874F07BEC3A87023EE49B0E7EBE08178C49D0A49C3C98ED60E",
             )?;
 
-            let ans: QueryAnswer =
-                client.query_contract(&QueryMsg::TokenInfo {}, &contract, &localsecret::a())?;
+            let ans: QueryAnswer = client.blocking_query_contract(
+                &QueryMsg::TokenInfo {},
+                &contract,
+                &localsecret::a(),
+            )?;
 
             println!("{ans:#?}");
 

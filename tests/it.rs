@@ -1,5 +1,5 @@
-#[test]
-fn test_contract() {
+#[tokio::test]
+async fn test_contract() {
     localsecret::env().run(test_contract_session).unwrap();
 }
 
@@ -25,7 +25,7 @@ fn test_contract_session(client: &localsecret::Client) -> localsecret::Result<()
         .broadcast()?
         .into_inner();
 
-    let greeting: test_contract::QueryAnswer = client.query_contract(
+    let greeting: test_contract::QueryAnswer = client.blocking_query_contract(
         &test_contract::QueryMsg::Greet {
             user: a.human_address(),
         },
@@ -58,7 +58,7 @@ fn test_contract_session(client: &localsecret::Client) -> localsecret::Result<()
         }
     );
 
-    let greeting: test_contract::QueryAnswer = client.query_contract(
+    let greeting: test_contract::QueryAnswer = client.blocking_query_contract(
         &test_contract::QueryMsg::Greet {
             user: a.human_address(),
         },

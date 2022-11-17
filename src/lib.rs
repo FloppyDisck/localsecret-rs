@@ -5,6 +5,7 @@ pub(crate) mod crypto;
 
 mod docker;
 
+use futures::prelude::*;
 pub use account::{a, b, c, d, Account};
 pub use client::{
     tx::builder::*,
@@ -66,16 +67,21 @@ impl LocalSecret {
         if self.spawn_docker {
             docker::docker_run(f)
         } else {
-            let enclave_key = self
-                .enclave_key
-                .as_ref()
-                .map(|hk| hex::decode(hk))
-                .transpose()?
-                .map(|v| crypto::clone_into_key(&v));
-
-            let client = Client::init(&self.rpc_host, self.rpc_port, enclave_key)?;
+            let client = self.connect()?;
             f(&client)
         }
+    }
+
+    /// Initialized an RPC client
+    pub fn connect(&self) -> Result<Client> {
+        let enclave_key = self
+            .enclave_key
+            .as_ref()
+            .map(|hk| hex::decode(hk))
+            .transpose()?
+            .map(|v| crypto::clone_into_key(&v));
+
+        Client::init(&self.rpc_host, self.rpc_port, enclave_key)
     }
 }
 

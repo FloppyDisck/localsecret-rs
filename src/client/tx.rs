@@ -209,13 +209,13 @@ pub mod builder {
 
             let label = kind.label();
 
-            if client.query_contract_label_exists(&label)? {
+            if client.blocking_query_contract_label_exists(&label)? {
                 return Err(Error::ContractLabelExists(label));
             }
 
-            let code_hash = client.query_code_hash_by_code_id(kind.code_id)?;
+            let code_hash = client.blocked_query_code_hash_by_code_id(kind.code_id)?;
 
-            let (_, encrypted_msg) = client.encrypt_msg(&kind.msg, &code_hash, &from)?;
+            let (_, encrypted_msg) = client.blocking_encrypt_msg(&kind.msg, &code_hash, &from)?;
 
             let msg = MsgInstantiateContract {
                 sender: from.id(),
@@ -246,7 +246,7 @@ pub mod builder {
             } = self;
 
             let (nonce, encrypted_msg) =
-                client.encrypt_msg(&kind.msg, kind.contract.code_hash(), &from)?;
+                client.blocking_encrypt_msg(&kind.msg, kind.contract.code_hash(), &from)?;
 
             use cosmrs::secret_cosmwasm::MsgExecuteContract;
             let msg = MsgExecuteContract {
@@ -256,7 +256,7 @@ pub mod builder {
                 sent_funds: kind.sent_funds,
             };
 
-            let decrypter = client.decrypter(&nonce, &from)?;
+            let decrypter = client.blocking_decrypter(&nonce, &from)?;
 
             let gas = fee.unwrap_or_else(|| super::gas::exec());
 
@@ -298,7 +298,7 @@ impl super::Client {
         const HEIGHT_TIMEOUT_INTERVAL: u32 = 10;
 
         let last_block_height = self.last_block_height()?;
-        let account_info = self.query_account_info(account)?;
+        let account_info = self.blocking_query_account_info(account)?;
 
         let body = Body::new(
             vec![msg.to_any()?],

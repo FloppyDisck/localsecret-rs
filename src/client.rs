@@ -52,12 +52,12 @@ impl Client {
         Ok(res.block.header.height.value() as _)
     }
 
-    fn enclave_public_key(&self) -> Result<crypto::Key> {
+    async fn enclave_public_key(&self) -> Result<crypto::Key> {
         if let Some(pubk) = self.enclave_pubk.borrow().as_ref() {
             return Ok(*pubk);
         }
 
-        let key = self.query_tx_key()?;
+        let key = self.query_tx_key().await?;
 
         let pubk = crypto::cert::consenus_io_pubk(&key)?;
 
@@ -66,7 +66,21 @@ impl Client {
         Ok(pubk)
     }
 
-    fn encrypt_msg<M: serde::Serialize>(
+    fn blocking_enclave_public_key(&self) -> Result<crypto::Key> {
+        if let Some(pubk) = self.enclave_pubk.borrow().as_ref() {
+            return Ok(*pubk);
+        }
+
+        let key = self.blocking_query_tx_key()?;
+
+        let pubk = crypto::cert::consenus_io_pubk(&key)?;
+
+        self.enclave_pubk.replace(Some(pubk));
+
+        Ok(pubk)
+    }
+
+    async fn encrypt_msg<M: serde::Serialize>(
         &self,
         msg: &M,
         code_hash: &CodeHash,
@@ -74,19 +88,43 @@ impl Client {
     ) -> Result<(Nonce, Vec<u8>)> {
         let msg = serde_json::to_vec(msg).expect("msg cannot be serialized as JSON");
         let plaintext = [code_hash.to_hex_string().as_bytes(), msg.as_slice()].concat();
-        self.encrypt_msg_raw(&plaintext, account)
+        self.encrypt_msg_raw(&plaintext, account).await
     }
 
-    fn encrypt_msg_raw(&self, msg: &[u8], account: &Account) -> Result<(Nonce, Vec<u8>)> {
+    fn blocking_encrypt_msg<M: serde::Serialize>(
+        &self,
+        msg: &M,
+        code_hash: &CodeHash,
+        account: &Account,
+    ) -> Result<(Nonce, Vec<u8>)> {
+        let msg = serde_json::to_vec(msg).expect("msg cannot be serialized as JSON");
+        let plaintext = [code_hash.to_hex_string().as_bytes(), msg.as_slice()].concat();
+        self.blocking_encrypt_msg_raw(&plaintext, account)
+    }
+
+    async fn encrypt_msg_raw(&self, msg: &[u8], account: &Account) -> Result<(Nonce, Vec<u8>)> {
         let (prvk, pubk) = account.prv_pub_bytes();
-        let io_key = self.enclave_public_key()?;
+        let io_key = self.enclave_public_key().await?;
         let nonce_ciphertext = crypto::encrypt(&prvk, &pubk, &io_key, msg)?;
         Ok(nonce_ciphertext)
     }
 
-    fn decrypter(&self, nonce: &Nonce, account: &Account) -> Result<Decrypter> {
+    fn blocking_encrypt_msg_raw(&self, msg: &[u8], account: &Account) -> Result<(Nonce, Vec<u8>)> {
+        let (prvk, pubk) = account.prv_pub_bytes();
+        let io_key = self.blocking_enclave_public_key()?;
+        let nonce_ciphertext = crypto::encrypt(&prvk, &pubk, &io_key, msg)?;
+        Ok(nonce_ciphertext)
+    }
+
+    async fn decrypter(&self, nonce: &Nonce, account: &Account) -> Result<Decrypter> {
         let (secret, _) = account.prv_pub_bytes();
-        let io_key = self.enclave_public_key()?;
+        let io_key = self.enclave_public_key().await?;
+        Ok(Decrypter::new(secret, io_key, *nonce))
+    }
+
+    fn blocking_decrypter(&self, nonce: &Nonce, account: &Account) -> Result<Decrypter> {
+        let (secret, _) = account.prv_pub_bytes();
+        let io_key = self.blocking_enclave_public_key()?;
         Ok(Decrypter::new(secret, io_key, *nonce))
     }
 
