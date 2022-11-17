@@ -1,6 +1,6 @@
-#[test]
-fn test_contract() {
-    localsecret::env().run(test_contract_session).unwrap();
+#[tokio::test]
+async fn test_contract() {
+    localsecret::env().run(test_contract_session).await.unwrap();
 }
 
 fn test_contract_session(client: &localsecret::Client) -> localsecret::Result<()> {

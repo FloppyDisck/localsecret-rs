@@ -19,7 +19,8 @@ pub enum QueryAnswer {
     },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     localsecret::env()
         .external()
         .external_rpc_host("https://secret-4.api.trivium.network")
@@ -37,5 +38,5 @@ fn main() {
 
             Ok(())
         })
-        .unwrap();
+        .await.unwrap();
 }

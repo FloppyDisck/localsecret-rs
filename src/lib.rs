@@ -5,6 +5,7 @@ pub(crate) mod crypto;
 
 mod docker;
 
+use futures::prelude::*;
 pub use account::{a, b, c, d, Account};
 pub use client::{
     tx::builder::*,
@@ -59,7 +60,7 @@ impl LocalSecret {
     }
 
     /// (Conditionally) Spawn a docker container, connect the RPC client and pass it to the session function.
-    pub fn run<F, T>(&self, f: F) -> Result<T>
+    pub async fn run<F, T>(&self, f: F) -> Result<T>
     where
         F: FnOnce(&Client) -> Result<T> + std::panic::UnwindSafe,
     {
