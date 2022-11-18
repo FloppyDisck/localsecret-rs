@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 
 use cosmrs::rpc::{self, Client as RpcClient};
-use tokio::runtime::Runtime;
 
 use crate::{
     account::Account,
@@ -12,11 +11,9 @@ use crate::{
 // the client query impl
 mod query;
 // the client tx impl
-pub(crate) mod tx;
 pub mod types;
 
 pub struct Client {
-    rt: Runtime,
     rpc: rpc::HttpClient,
     enclave_pubk: RefCell<Option<crypto::Key>>,
 }
@@ -27,29 +24,14 @@ impl Client {
         rpc_port: u16,
         enclave_key: Option<crypto::Key>,
     ) -> Result<Client> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(Error::Runtime)?;
-
         let rpc_url = format!("{}:{}", rpc_host, rpc_port);
         let rpc = rpc::HttpClient::new(rpc_url.as_str())?;
         let enclave_pubk = RefCell::new(enclave_key);
 
         Ok(Client {
-            rt,
             rpc,
             enclave_pubk,
         })
-    }
-
-    pub(crate) fn wait_for_first_block(&self) -> Result<()> {
-        self.block_on(wait_for_first_block(&self.rpc))
-    }
-
-    pub fn last_block_height(&self) -> Result<u32> {
-        let res = self.block_on(rpc::Client::latest_block(&self.rpc))?;
-        Ok(res.block.header.height.value() as _)
     }
 
     async fn enclave_public_key(&self) -> Result<crypto::Key> {
@@ -58,20 +40,6 @@ impl Client {
         }
 
         let key = self.query_tx_key().await?;
-
-        let pubk = crypto::cert::consenus_io_pubk(&key)?;
-
-        self.enclave_pubk.replace(Some(pubk));
-
-        Ok(pubk)
-    }
-
-    fn blocking_enclave_public_key(&self) -> Result<crypto::Key> {
-        if let Some(pubk) = self.enclave_pubk.borrow().as_ref() {
-            return Ok(*pubk);
-        }
-
-        let key = self.blocking_query_tx_key()?;
 
         let pubk = crypto::cert::consenus_io_pubk(&key)?;
 
@@ -91,27 +59,9 @@ impl Client {
         self.encrypt_msg_raw(&plaintext, account).await
     }
 
-    fn blocking_encrypt_msg<M: serde::Serialize>(
-        &self,
-        msg: &M,
-        code_hash: &CodeHash,
-        account: &Account,
-    ) -> Result<(Nonce, Vec<u8>)> {
-        let msg = serde_json::to_vec(msg).expect("msg cannot be serialized as JSON");
-        let plaintext = [code_hash.to_hex_string().as_bytes(), msg.as_slice()].concat();
-        self.blocking_encrypt_msg_raw(&plaintext, account)
-    }
-
     async fn encrypt_msg_raw(&self, msg: &[u8], account: &Account) -> Result<(Nonce, Vec<u8>)> {
         let (prvk, pubk) = account.prv_pub_bytes();
         let io_key = self.enclave_public_key().await?;
-        let nonce_ciphertext = crypto::encrypt(&prvk, &pubk, &io_key, msg)?;
-        Ok(nonce_ciphertext)
-    }
-
-    fn blocking_encrypt_msg_raw(&self, msg: &[u8], account: &Account) -> Result<(Nonce, Vec<u8>)> {
-        let (prvk, pubk) = account.prv_pub_bytes();
-        let io_key = self.blocking_enclave_public_key()?;
         let nonce_ciphertext = crypto::encrypt(&prvk, &pubk, &io_key, msg)?;
         Ok(nonce_ciphertext)
     }
@@ -122,18 +72,6 @@ impl Client {
         Ok(Decrypter::new(secret, io_key, *nonce))
     }
 
-    fn blocking_decrypter(&self, nonce: &Nonce, account: &Account) -> Result<Decrypter> {
-        let (secret, _) = account.prv_pub_bytes();
-        let io_key = self.blocking_enclave_public_key()?;
-        Ok(Decrypter::new(secret, io_key, *nonce))
-    }
-
-    fn block_on<R, F>(&self, fut: F) -> R
-    where
-        F: std::future::Future<Output = R>,
-    {
-        self.rt.block_on(fut)
-    }
 }
 
 async fn wait_for_first_block(client: &rpc::HttpClient) -> Result<()> {

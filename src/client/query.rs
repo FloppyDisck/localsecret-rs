@@ -37,20 +37,6 @@ impl super::Client {
             .map(|ci| CodeHash::from(ci.data_hash))
     }
 
-    pub fn blocked_query_code_hash_by_code_id(&self, code_id: CodeId) -> Result<CodeHash> {
-        use cosmrs::proto::cosmwasm::secret::compute::v1beta1::{
-            QueryCodeRequest, QueryCodeResponse,
-        };
-        let path = "/secret.compute.v1beta1.Query/Code";
-        let msg = QueryCodeRequest {
-            code_id: code_id.into(),
-        };
-        self.blocking_query_with_msg(path, msg)
-            .and_then(try_decode_response::<QueryCodeResponse>)
-            .and_then(|res| res.code_info.ok_or(Error::ContractInfoNotFound(code_id)))
-            .map(|ci| CodeHash::from(ci.data_hash))
-    }
-
     pub async fn query_contract<M, R>(
         &self,
         msg: &M,
@@ -81,35 +67,6 @@ impl super::Client {
             .and_then(|b46| base64::decode(b46).map_err(crate::Error::from))
             .and_then(|buf| serde_json::from_slice(&buf).map_err(crate::Error::from))
     }
-    pub fn blocking_query_contract<M, R>(
-        &self,
-        msg: &M,
-        contract: &Contract,
-        from: &Account,
-    ) -> Result<R>
-    where
-        M: serde::Serialize,
-        R: serde::de::DeserializeOwned,
-    {
-        use cosmrs::proto::cosmwasm::secret::compute::v1beta1::{
-            QuerySmartContractStateRequest, QuerySmartContractStateResponse,
-        };
-        let path = "/secret.compute.v1beta1.Query/QuerySecretContract";
-        let (nonce, encrypted) = self.blocking_encrypt_msg(&msg, &contract.code_hash(), from)?;
-        let msg = QuerySmartContractStateRequest {
-            address: contract.id().to_string(),
-            query_data: encrypted,
-        };
-
-        let decrypter = self.blocking_decrypter(&nonce, from)?;
-
-        self.blocking_query_with_msg(path, msg)
-            .and_then(try_decode_response::<QuerySmartContractStateResponse>)
-            .and_then(|res| decrypter.decrypt(&res.data).map_err(crate::Error::from))
-            .and_then(|plt| String::from_utf8(plt).map_err(crate::Error::from))
-            .and_then(|b46| base64::decode(b46).map_err(crate::Error::from))
-            .and_then(|buf| serde_json::from_slice(&buf).map_err(crate::Error::from))
-    }
 
     pub(crate) async fn query_account_info(&self, account: &Account) -> Result<AccountInfo> {
         use cosmrs::proto::cosmos::auth::v1beta1::{
@@ -130,24 +87,6 @@ impl super::Client {
             .map(AccountInfo::from)
     }
 
-    pub(crate) fn blocking_query_account_info(&self, account: &Account) -> Result<AccountInfo> {
-        use cosmrs::proto::cosmos::auth::v1beta1::{
-            BaseAccount, QueryAccountRequest, QueryAccountResponse,
-        };
-        let path = "/cosmos.auth.v1beta1.Query/Account";
-        let msg = QueryAccountRequest {
-            address: account.id().to_string(),
-        };
-        self.blocking_query_with_msg(path, msg)
-            .and_then(try_decode_response::<QueryAccountResponse>)
-            .and_then(|res| {
-                res.account
-                    .ok_or_else(|| Error::AccountNotFound(account.human_address()))
-            })
-            .and_then(try_decode_any::<BaseAccount>)
-            .map(AccountInfo::from)
-    }
-
     pub(crate) async fn query_tx_key(&self) -> Result<Vec<u8>> {
         use cosmrs::proto::cosmwasm::secret::registration::v1beta1::Key;
         let path = "/secret.registration.v1beta1.Query/TxKey";
@@ -157,39 +96,20 @@ impl super::Client {
             .map(|key| key.key)
     }
 
-    pub(crate) fn blocking_query_tx_key(&self) -> Result<Vec<u8>> {
-        use cosmrs::proto::cosmwasm::secret::registration::v1beta1::Key;
-        let path = "/secret.registration.v1beta1.Query/TxKey";
-        self.blocking_query_path(path)
-            .and_then(try_decode_response::<Key>)
-            .map(|key| key.key)
-    }
-
     pub(crate) async fn query_contract_label_exists(&self, label: &str) -> Result<bool> {
         let path = format!("custom/compute/label/{label}");
         self.query_path(&path).await.map(|res| res.code.is_ok())
-    }
-
-    pub(crate) fn blocking_query_contract_label_exists(&self, label: &str) -> Result<bool> {
-        let path = format!("custom/compute/label/{label}");
-        self.blocking_query_path(&path).map(|res| res.code.is_ok())
     }
 
     async fn query_with_msg(&self, path: &str, msg: impl Message) -> Result<QueryResponse> {
         self.query(path, msg.encode_to_vec()).await
     }
 
-    fn blocking_query_with_msg(&self, path: &str, msg: impl Message) -> Result<QueryResponse> {
-        self.blocking_query(path, msg.encode_to_vec())
-    }
 
     async fn query_path(&self, path: &str) -> Result<QueryResponse> {
         self.query(path, vec![]).await
     }
 
-    fn blocking_query_path(&self, path: &str) -> Result<QueryResponse> {
-        self.blocking_query(path, vec![])
-    }
 
     async fn query(&self, path: &str, data: Vec<u8>) -> Result<QueryResponse> {
         let path = path.parse().expect("abci_query path conversion failed");
@@ -197,13 +117,6 @@ impl super::Client {
         Ok(self.rpc.abci_query(Some(path), data, None, false).await?)
     }
 
-    fn blocking_query(&self, path: &str, data: Vec<u8>) -> Result<QueryResponse> {
-        let path = path.parse().expect("abci_query path conversion failed");
-        println!("{path}");
-        let req = self.rpc.abci_query(Some(path), data, None, false);
-        let res = self.block_on(req)?;
-        Ok(res)
-    }
 }
 
 fn try_decode_response<T: Message + Default>(response: QueryResponse) -> Result<T> {

@@ -3,12 +3,10 @@ pub mod client;
 pub(crate) mod consts;
 pub(crate) mod crypto;
 
-mod docker;
 
 use futures::prelude::*;
 pub use account::{a, b, c, d, Account};
 pub use client::{
-    tx::builder::*,
     types::{CodeHash, CodeId, Contract, TxResponse},
     Client,
 };
@@ -64,12 +62,8 @@ impl LocalSecret {
     where
         F: FnOnce(&Client) -> Result<T> + std::panic::UnwindSafe,
     {
-        if self.spawn_docker {
-            docker::docker_run(f)
-        } else {
-            let client = self.connect()?;
-            f(&client)
-        }
+        let client = self.connect()?;
+        f(&client)
     }
 
     /// Initialized an RPC client
